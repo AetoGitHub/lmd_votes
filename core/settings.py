@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "vote",
     "draga",
     "season",
+    "home",
 ]
 
 MIDDLEWARE = [
