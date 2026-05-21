@@ -4,6 +4,7 @@ from django.db import models as m
 
 class Season(m.Model):
     name = m.CharField(max_length=100)
+    image_url = m.URLField(blank=True)
 
 class Chapter(m.Model):
     number = m.PositiveSmallIntegerField()
@@ -17,10 +18,10 @@ class Chapter(m.Model):
 
 class DragaSeasonenData(m.Model):
     draga = m.ForeignKey(
-        to           = "draga.Feminosa", 
+        to           = "draga.Feminosa",
         related_name = "data",
         on_delete    = m.PROTECT
-        
+
     )
     season = m.ForeignKey(
         to           = Season,
@@ -28,3 +29,4 @@ class DragaSeasonenData(m.Model):
         on_delete    = m.PROTECT
 
     )
+    image_url = m.URLField(blank=True)
