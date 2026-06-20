@@ -7,6 +7,7 @@ async function api(method, path, body = null) {
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(API_BASE + path, opts);
     if (!res.ok) throw await res.json();
+    if (res.status === 204) return null;
     return res.json();
 }
 
@@ -14,6 +15,39 @@ const get  = (path)        => api('GET', path);
 const post = (path, body)  => api('POST', path, body);
 const put  = (path, body)  => api('PUT', path, body);
 const del  = (path)        => api('DELETE', path);
+
+/* ===== CONFIRM MODAL ===== */
+function showConfirm({ icon = '⚠️', title = '¿Estás segura?', message = '', confirmText = 'Confirmar', danger = false }) {
+    return new Promise((resolve) => {
+        document.getElementById('modal-icon').textContent    = icon;
+        document.getElementById('modal-title').textContent   = title;
+        document.getElementById('modal-message').textContent = message;
+
+        const confirmBtn = document.getElementById('modal-confirm');
+        const cancelBtn  = document.getElementById('modal-cancel');
+        confirmBtn.textContent = confirmText;
+        confirmBtn.className   = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+
+        const modal = document.getElementById('confirm-modal');
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => modal.classList.add('show'));
+
+        const ctrl = new AbortController();
+        const sig  = ctrl.signal;
+
+        function close(result) {
+            ctrl.abort();
+            modal.classList.remove('show');
+            setTimeout(() => { modal.style.display = 'none'; }, 250);
+            resolve(result);
+        }
+
+        confirmBtn.addEventListener('click', () => close(true),  { signal: sig });
+        cancelBtn.addEventListener('click',  () => close(false), { signal: sig });
+        modal.addEventListener('click', (e) => { if (e.target === modal) close(false); }, { signal: sig });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(false); }, { signal: sig });
+    });
+}
 
 /* ===== HOME STATS ===== */
 async function loadHomeStats() {
@@ -142,6 +176,7 @@ let isFirstRating     = true;
 let selectedDragaId   = null;
 let prevLeaderDragaId = null;
 let currentScore      = 50;
+let editingCalId      = null;
 
 const ZONES = [
     { max: 0.20, emoji: '💀', label: 'Desastre',  color: '#888888' },
@@ -316,11 +351,12 @@ function renderRanking() {
     info.textContent = `Rango actual: 0 — ${currentMax.toFixed(0)}`;
 
     list.innerHTML = sorted.map((c, i) => {
-        const pct   = Math.round((c.score / currentMax) * 100);
-        const isRef = c.id === refId;
-        const isTop = i === 0;
-        const img   = c.draga_detail?.image_url || '';
-        const medal = medals[i] ? `<span class="ranking-medal">${medals[i]}</span>` : '';
+        const pct    = Math.round((c.score / currentMax) * 100);
+        const isRef  = c.id === refId;
+        const isTop  = i === 0;
+        const img    = c.draga_detail?.image_url || '';
+        const nombre = (c.draga_detail?.name || '').replace(/'/g, "\\'");
+        const medal  = medals[i] ? `<span class="ranking-medal">${medals[i]}</span>` : '';
         return `
         <div class="ranking-item ${isTop ? 'is-first' : ''} ${isRef ? 'is-reference' : ''} ${c._new ? 'new-entry' : ''}">
             ${medal}
@@ -334,6 +370,12 @@ function renderRanking() {
                 <div class="ranking-bar-wrap">
                     <div class="ranking-bar" style="width:${pct}%"></div>
                 </div>
+            </div>
+            <div class="ranking-actions">
+                <button class="btn-ranking-action btn-edit"
+                        onclick="editCalificacion(${c.id}, ${c.draga}, ${c.score}, '${img}', '${nombre}')">✎ Editar</button>
+                <button class="btn-ranking-action btn-delete"
+                        onclick="deleteCalificacion(${c.id})">✕ Borrar</button>
             </div>
         </div>`;
     }).join('');
@@ -407,10 +449,48 @@ function seleccionarDraga(card) {
 
 function deseleccionarDraga() {
     selectedDragaId = null;
+    editingCalId    = null;
     document.querySelectorAll('.draga-picker-card').forEach(c => c.classList.remove('selected'));
     document.getElementById('picker-selected').style.display = 'none';
     document.getElementById('slider-block').style.display    = 'none';
     document.getElementById('rating-error').textContent      = '';
+    document.getElementById('save-btn').textContent          = '¡CALIFICAR! ✨';
+}
+
+function editCalificacion(calId, dragaId, score, img, nombre) {
+    editingCalId    = calId;
+    selectedDragaId = dragaId;
+
+    document.getElementById('selected-img').src           = img;
+    document.getElementById('selected-name').textContent  = nombre;
+    document.getElementById('picker-selected').style.display = 'flex';
+    document.getElementById('slider-block').style.display    = 'block';
+
+    setScore(score);
+
+    document.getElementById('save-btn').textContent = '✏️ ACTUALIZAR';
+    document.getElementById('slider-block').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function deleteCalificacion(calId) {
+    const ok = await showConfirm({
+        icon:        '🗑️',
+        title:       '¿Borrar calificación?',
+        message:     'La draga volverá al picker para que puedas recalificarla.',
+        confirmText: 'Sí, borrar',
+        danger:      true,
+    });
+    if (!ok) return;
+    try {
+        await del(`/calificaciones/${calId}/`);
+        calsInChapter = await get(`/calificaciones/?chapter=${chapterData.id}`);
+        renderRanking();
+        renderDragaPicker();
+        resetTouchBar();
+        updateProgress();
+    } catch (e) {
+        console.error(e);
+    }
 }
 
 function extendRange() {
@@ -443,11 +523,19 @@ async function saveCalificacion() {
     try {
         const savedDragaId = selectedDragaId;
 
-        await post('/calificaciones/', {
-            draga:   selectedDragaId,
-            chapter: chapterData.id,
-            score:   currentScore,
-        });
+        if (editingCalId !== null) {
+            await put(`/calificaciones/${editingCalId}/`, {
+                draga:   selectedDragaId,
+                chapter: chapterData.id,
+                score:   currentScore,
+            });
+        } else {
+            await post('/calificaciones/', {
+                draga:   selectedDragaId,
+                chapter: chapterData.id,
+                score:   currentScore,
+            });
+        }
 
         calsInChapter = await get(`/calificaciones/?chapter=${chapterData.id}`);
 
@@ -465,13 +553,14 @@ async function saveCalificacion() {
         resetTouchBar();
         updateProgress();
 
+        editingCalId = null;
         calsInChapter.forEach(c => delete c._new);
 
     } catch (err) {
         errEl.textContent = Object.values(err).flat().join(' ');
     } finally {
         saveBtn.disabled    = false;
-        saveBtn.textContent = '¡CALIFICAR! ✨';
+        saveBtn.textContent = editingCalId !== null ? '✏️ ACTUALIZAR' : '¡CALIFICAR! ✨';
     }
 }
 
