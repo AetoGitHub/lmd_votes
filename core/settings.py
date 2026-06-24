@@ -14,7 +14,7 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 RAILWAY_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'healthcheck.railway.app']
 if RAILWAY_DOMAIN:
     ALLOWED_HOSTS.append(RAILWAY_DOMAIN)
 # Dominios extra separados por coma (ej. dominio personalizado)
