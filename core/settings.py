@@ -13,7 +13,21 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 RAILWAY_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
-ALLOWED_HOSTS = ['localhost', '127.0.0.1'] + ([RAILWAY_DOMAIN] if RAILWAY_DOMAIN else [])
+
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+if RAILWAY_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_DOMAIN)
+# Dominios extra separados por coma (ej. dominio personalizado)
+_extra = os.environ.get('ALLOWED_HOSTS', '')
+if _extra:
+    ALLOWED_HOSTS += [h.strip() for h in _extra.split(',') if h.strip()]
+
+# Requerido en Django 4+ para CSRF con HTTPS
+CSRF_TRUSTED_ORIGINS = []
+if RAILWAY_DOMAIN:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_DOMAIN}')
+if _extra:
+    CSRF_TRUSTED_ORIGINS += [f'https://{h.strip()}' for h in _extra.split(',') if h.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
