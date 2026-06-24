@@ -11,4 +11,5 @@ dependencies = [
     "whitenoise>=6.8",
     "dj-database-url>=2.3",
     "psycopg[binary]>=3.2",
+    "python-dotenv>=1.2.2",
 ]
